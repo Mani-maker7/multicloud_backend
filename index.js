@@ -1,36 +1,63 @@
 const express = require("express");
-const app = express();
+const { BigQuery } = require("@google-cloud/bigquery");
 
+const app = express();
 app.use(express.json());
 
-// health
+// 🔥 Initialize BigQuery
+const bigquery = new BigQuery();
+
+// health check
 app.get("/", (req, res) => {
   res.send("GCP OK");
 });
 
-// process data from AWS
-app.post("/process", (req, res) => {
-  const data = req.body.data;
+// process data from AWS + store in BigQuery
+app.post("/process", async (req, res) => {
+  try {
+    const data = req.body.data;
 
-  if (!data) {
-    return res.status(400).send("No data");
-  }
+    if (!data) {
+      return res.status(400).send("No data");
+    }
 
-  // simple analytics
-  const totalRevenue = data.reduce((sum, item) => sum + item.amount, 0);
-
-  res.json({
-    totalProducts: data.length,
-    totalRevenue,
-    data: data.map(d => ({
+    // 🔥 Format data for both response + BigQuery
+    const formatted = data.map(d => ({
       product: d.product,
       revenue: d.amount,
       category: "General"
-    }))
-  });
+    }));
+
+    // 🔥 Insert into BigQuery
+    await bigquery
+      .dataset("sales_dataset")
+      .table("sales_data")
+      .insert(
+        formatted.map(d => ({
+          product: d.product,
+          revenue: d.revenue
+        }))
+      );
+
+    // 🔥 Analytics calculation (same as before)
+    const totalRevenue = formatted.reduce((sum, item) => sum + item.revenue, 0);
+
+    // 🔥 Response (UNCHANGED STRUCTURE → frontend safe)
+    res.json({
+      totalProducts: formatted.length,
+      totalRevenue,
+      data: formatted
+    });
+
+  } catch (err) {
+    console.error("BigQuery Error:", err);
+
+    res.status(500).json({
+      error: "Failed to process and store data"
+    });
+  }
 });
 
+// start server
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log("Server running on port", PORT));
