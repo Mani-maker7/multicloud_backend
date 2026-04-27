@@ -9,4 +9,4 @@ COPY . .
 
 ENV PORT=8080
 
-CMD ["npm", "index.js"]
+CMD ["npm", "start"]
